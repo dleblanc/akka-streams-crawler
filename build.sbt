@@ -26,6 +26,7 @@ libraryDependencies ++= Seq(
 
   "com.typesafe.akka" %% "akka-http" % "10.1.3",
   "com.typesafe.akka" %% "akka-stream" % "2.5.13",
+  "com.typesafe.akka" %% "akka-actor" % "2.5.13",
   "com.github.scopt" %% "scopt" % "3.7.0",
   "com.lihaoyi" %% "upickle" % "0.6.6",
 
@@ -39,3 +40,7 @@ retrieveManaged := true
 
 // Don't convert name to lowercase
 normalizedName := name.value
+
+//assemblyMergeStrategy in assembly := {
+//      case PathList("reference.conf") => MergeStrategy.concat
+//}
