@@ -6,3 +6,7 @@ target
 /project/target
 
 algorithm.zip
+
+/.idea
+/lib_managed
+/project/build.properties
