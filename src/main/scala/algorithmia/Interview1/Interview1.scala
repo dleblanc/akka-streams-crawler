@@ -6,7 +6,7 @@ import akka.http.scaladsl.model.HttpRequest
 import akka.stream.ActorMaterializer
 import akka.stream.scaladsl.{Sink, Source}
 import com.typesafe.config.ConfigFactory
-import ujson.{Js, Transformable}
+import ujson.Transformable
 
 import scala.concurrent.duration.DurationDouble
 import scala.concurrent.{Await, Future}
@@ -25,16 +25,16 @@ class Interview1 {
   private[this] val requestTimeout = 1.minute
   private[this] val sumTimeout = 2.minutes
 
-  // Akka doesn't like how Algorithmia packages up the resources - provide a classloader to help it out
+  val akkaClassLoader = classOf[akka.event.DefaultLoggingFilter].getClassLoader
+
+  // Akka seems to be having trouble with our classloader
   private[this] val config =  ConfigFactory
-    .parseResources(classOf[Interview1], "/application.conf")
-    .withFallback(ConfigFactory.parseResources(classOf[ActorSystem], "/reference.conf"))
+    .defaultApplication(akkaClassLoader)
     .resolve()
 
-  // Akka's default classloader mechanism fails to use the correct classloader - be explicit here
-  private[this] implicit val actorSystem: ActorSystem = ActorSystem.create("actorsystem", config, classOf[akka.event.DefaultLoggingFilter].getClassLoader)
-  private[this] val log = actorSystem.log
+  private[this] implicit val actorSystem: ActorSystem = ActorSystem.create("actorsystem", config, akkaClassLoader)
   private[this] implicit val materializer: ActorMaterializer = ActorMaterializer()
+  private[this] val log = actorSystem.log
 
 
   def apply(rootUri: String): String = {
