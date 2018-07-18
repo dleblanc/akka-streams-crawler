@@ -1,11 +1,9 @@
 #### This is the code for the Algorithmia interview challenge: (http://algo.work/interview)
 
-This approach uses Akka Streams and Akka-HTTP to crawl a nested JSON structure. You can run it locally
-via "LocalRunner", or host it on Algorithmia via the Interview1 class.
+This approach uses Akka Actors and Akka-HTTP to crawl a nested JSON structure. You can run it locally
+via "Crawler", or host it on Algorithmia via the Interview1 class.
 
-It is also fairly well tested, see Interview1Test.
-
-It scales well to many thousands of resources (see below for testing), and uses a streaming Futures oriented
+It scales well to many thousands of resources (see below for testing), and uses a nested Futures oriented
 approach, so fetches resources in an eager yet non-blocking fashion.
 
 * Local testing:
@@ -16,7 +14,4 @@ approach, so fetches resources in an eager yet non-blocking fashion.
     > cd local-json; ./populate.py
 
   Now you can hit localhost:9000/a, which will descend a large tree of JSON resources. A tree depth of 13 yields about
-  8000 JSON files.
-
-
-
+  8000 JSON files. Note that this is only a simple stress test, and doesn't include other edge cases.

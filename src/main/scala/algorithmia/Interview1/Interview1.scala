@@ -1,34 +1,26 @@
 package algorithmia.Interview1
 
-import akka.actor.ActorSystem
-import akka.http.scaladsl.Http
-import akka.http.scaladsl.model.HttpRequest
+import java.util.concurrent.ConcurrentHashMap
+
+import akka.actor.{ActorSystem, Props}
+import akka.pattern.ask
 import akka.stream.ActorMaterializer
-import akka.stream.scaladsl.{Sink, Source}
+import akka.util.Timeout
 import com.typesafe.config.ConfigFactory
-import ujson.Transformable
 
+import scala.collection.JavaConverters._
 import scala.concurrent.duration.DurationDouble
-import scala.concurrent.{Await, Future}
+import scala.concurrent.{Await, ExecutionContextExecutor}
 
-// Being lazy about defining execution contexts, this works fine for this purpose
-import scala.concurrent.ExecutionContext.Implicits.global
-
-object Interview1 {
-  type State = (Set[String], List[String])
-  type StateAndReward = (State, Double)
-}
 
 class Interview1 {
-  import Interview1._
 
-  private[this] val requestTimeout = 1.minute
-  private[this] val sumTimeout = 2.minutes
+  private[this] val sumTimeout = 3.minutes
 
-  val akkaClassLoader = classOf[akka.event.DefaultLoggingFilter].getClassLoader
+  private val akkaClassLoader = classOf[akka.event.DefaultLoggingFilter].getClassLoader
 
   // Akka seems to be having trouble with our classloader
-  private[this] val config =  ConfigFactory
+  private[this] val config = ConfigFactory
     .defaultApplication(akkaClassLoader)
     .resolve()
 
@@ -39,85 +31,31 @@ class Interview1 {
 
   def apply(rootUri: String): String = {
 
-    val resultFuture = crawlAndSumWithUri(rootUri)
-      .andThen {
-        case _ => actorSystem.terminate()
-      }
+    val sharedFetchUrlMap = new ConcurrentHashMap[String, Unit]().asScala
+    val crawlerActor = actorSystem.actorOf(Props(new CrawlerActor(sharedFetchUrlMap)))
 
-    val sum = Await.result(resultFuture, requestTimeout)
+    implicit val timeout: Timeout = sumTimeout
+    val future = (crawlerActor ? ResourceRequest(rootUri)).mapTo[Option[UriResult]]
+
+    implicit val dispatcher: ExecutionContextExecutor = actorSystem.dispatcher
+    val recoveredFuture = future
+      .filter { _.isDefined }
+      .map { _.get.flatten() }
+      .recover {
+        case ex =>
+          log.error(ex, "Error occurred: ")
+      }
+      .andThen { case _ => actorSystem.terminate() }
+      .mapTo[List[UriResult]]
+
+    val sumFuture = recoveredFuture.map {
+      _.map { _.reward }
+      .sum
+    }
+
+    val sum = Await.result(sumFuture, timeout.duration)
+
     s"The sum of rewards is: $sum"
   }
 
-  def crawlAndSumWithUri(rootUri: String): Future[Double] = {
-
-    val initialState = (Set.empty[String], List(rootUri))
-
-    val source = Source.unfoldAsync(initialState) { fetchNextBatch(fetchAndParseFromUri) }
-
-    source.runWith(Sink.fold(0.0) { case (tally, reward) =>
-      tally + reward
-    })
-  }
-
-  // Use a curried function so we can supply a different 'fetcher' for the tests
-  def fetchNextBatch(fetcher: String => Future[UriResult])(state: State): Future[Option[StateAndReward]] = {
-    val (fetched, toFetch) = state
-
-    // Filter so we don't re-request duplicate URIs, the reward for a URI is only counted once
-    val fetchable = toFetch
-      .filterNot {
-        fetched.contains
-      }
-
-    fetchable match {
-
-      case fetchUri :: remainingToFetch =>
-
-        log.info(s"Sending HTTP request to URI: $fetchUri")
-
-        fetcher(fetchUri)
-          .map { case UriResult(reward, childUrls) =>
-            val newState = (fetched + fetchUri, remainingToFetch ++ childUrls)
-            Some(newState, reward)
-          }
-
-      case Nil => Future.successful(None) // No more elements left to process, we're done streaming
-    }
-  }
-
-  def fetchAndParseFromUri(uri: String): Future[UriResult] = {
-
-    // NOTE: such a simple application of Akka-HTTP I'm omitting the test for it
-
-    Http()
-      .singleRequest(HttpRequest(uri = uri))
-      .flatMap {
-        _.entity
-          .toStrict(requestTimeout)
-          .map { _.data.utf8String}
-      }
-      .map(parseRequestFromJson)
-
-  }
-
-  def parseRequestFromJson(jsonString: String): UriResult = {
-
-    val json = ujson.read(Transformable.fromString(jsonString))
-
-    val childUris = try {
-      json("children")
-        .arr
-        .map {
-          _.str
-        }
-        .toList
-    } catch {
-      case _: NoSuchElementException => Nil
-    }
-
-    UriResult(json("reward").num, childUris)
-  }
-
 }
-
-case class UriResult(reward: Double, childUrls: Seq[String])
