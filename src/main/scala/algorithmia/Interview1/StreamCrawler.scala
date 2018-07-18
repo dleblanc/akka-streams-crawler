@@ -11,7 +11,7 @@ import ujson.Transformable
 import scala.annotation.tailrec
 import scala.concurrent.duration.DurationDouble
 import scala.concurrent.{Await, ExecutionContext, Future, Promise}
-import scala.util.Try
+import scala.util.{Success, Try}
 
 // Being lazy about defining execution contexts, this works fine for this purpose
 import scala.concurrent.ExecutionContext.Implicits.global
@@ -79,31 +79,30 @@ class StreamCrawler {
     // Filter so we don't re-request duplicate URIs, the reward for a URI is only counted once
     val fetchUris = toFetch
       .toSet // Remove dupes
-      .diff(fetched) // And any URIs we've already visited
+      .diff(fetched) // And ignore any URIs we've already visited
 
+    // Fetch all URLs in parallel
     val fetchFutures = fetchUris
       .map { uri =>
         log.info("Making a request for URI: " + uri)
         fetcher(uri)
       }
 
-    val allFutures = pendingFutures ++ fetchFutures
+    pendingFutures ++ fetchFutures match {
 
-    if (allFutures.nonEmpty) {
-      val firstAndRestFuture: Future[(Try[RewardAndChildren], Seq[Future[RewardAndChildren]])] = selectFuture(allFutures)
+      case Nil => Future.successful(None) // No more requests to make, signal that the stream is complete
 
-      // Pump the first result out to the stream, and continue processing the rest
-      firstAndRestFuture
-        .map { case (result: Try[RewardAndChildren], otherFutures) =>
+      case allFutures =>
 
-          val rewardAndChildren = result.get
-          val newState = (fetched ++ fetchUris, rewardAndChildren.childUrls.toList, otherFutures)
-          Some((newState, rewardAndChildren.reward))
-        }
-
-    } else {
-      // We're done - no futures pending
-      Future.successful(None)
+        // Pump the first eventual result out to the stream, and continue the stream processing the rest (and the newly
+        // resolved children)
+        selectFuture(allFutures)
+          .map {
+            case (resultTry, otherFutures) =>
+              val RewardAndChildren(reward, childUrls) = resultTry.get
+              val newState = (fetched ++ fetchUris, childUrls.toList, otherFutures)
+              Some((newState, reward))
+          }
     }
   }
 
