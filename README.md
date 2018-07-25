@@ -8,7 +8,7 @@ approach, so fetches resources in an eager yet non-blocking fashion.
 
 * Local testing:
   Start up a docker container as follows:
-    > run -p 9000:8080 -v `pwd`/local-json:/app bitnami/nginx:latest
+    > docker run -p 9000:8080 -v `pwd`/local-json:/app bitnami/nginx:latest
 
   Populate some nested JSON files (edit the nesting level if you like):
     > cd local-json; ./populate.py
