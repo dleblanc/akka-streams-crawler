@@ -175,6 +175,7 @@ object StreamBasedCrawler {
   type State = (Set[String], List[String], Seq[Future[RewardAndChildren]])
   type StateAndReward = (State, Double)
 
+  // Provide a way to run it locally, outside of Algorithmia
   def main(args: Array[String]): Unit = {
 
     val akkaClassLoader: ClassLoader = classOf[akka.event.DefaultLoggingFilter].getClassLoader
@@ -188,7 +189,7 @@ object StreamBasedCrawler {
     val uri = args.headOption.getOrElse("http://algo.work/interview/a")
     val resultFuture = new StreamBasedCrawler().crawlAndSumWithUri(uri)
       .andThen {
-        // Shut down the actor system if running locally (leave it up otherwise)
+        // Shut down the actor system if running locally
         case _ => actorSystem.terminate()
       }
 
