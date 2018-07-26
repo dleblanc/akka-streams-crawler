@@ -1,18 +1,20 @@
 package algorithmia.Interview1
 
-import algorithmia.Interview1.StreamCrawler.{State, StateAndReward}
+import akka.actor.ActorSystem
+import akka.testkit.TestKit
+import algorithmia.Interview1.StreamBasedCrawler.{State, StateAndReward}
 import org.scalatest._
 
 import scala.concurrent.duration.DurationInt
 import scala.concurrent.{Await, Future}
 
-class StreamCrawlerTest extends FunSuite with Matchers {
+class StreamBasedCrawlerTest extends TestKit(ActorSystem()) with FunSuiteLike with Matchers {
 
-  val streamCrawler = new StreamCrawler()
+  val crawler = new StreamBasedCrawler()
 
   test("parse request yields expected RewardAndChildren with empty children") {
 
-    val parsed = streamCrawler.parseRequestFromJson(
+    val parsed = crawler.parseRequestFromJson(
       """{
          "reward": 1.23,
          "children": ["http://a.b/c", "http:d.e/f"]
@@ -24,7 +26,7 @@ class StreamCrawlerTest extends FunSuite with Matchers {
 
   test("parse request handles empty children") {
 
-    val parsed = streamCrawler.parseRequestFromJson(
+    val parsed = crawler.parseRequestFromJson(
       """{
          "reward": 1.23,
          "children": []
@@ -36,7 +38,7 @@ class StreamCrawlerTest extends FunSuite with Matchers {
 
   test("parse request handles missing children property") {
 
-    val parsed = streamCrawler.parseRequestFromJson(
+    val parsed = crawler.parseRequestFromJson(
       """{
          "reward": 1.23
         }
@@ -120,7 +122,7 @@ class StreamCrawlerTest extends FunSuite with Matchers {
 
   def fetchSingleBatch(initialState: State, fetcher: String => Future[RewardAndChildren]): Option[StateAndReward] = {
 
-    val respFuture = streamCrawler.fetchNextBatch(fetcher)(initialState)
+    val respFuture = crawler.fetchNextBatch(fetcher)(initialState)
     Await.result(respFuture, 5.seconds)
   }
 }

@@ -1,59 +1,63 @@
 package algorithmia.Interview1
 
 import akka.actor.ActorSystem
+import akka.event.LoggingAdapter
 import akka.http.scaladsl.Http
 import akka.http.scaladsl.model.HttpRequest
 import akka.stream.ActorMaterializer
 import akka.stream.scaladsl.{Sink, Source}
-import com.typesafe.config.ConfigFactory
+import algorithmia.Interview1.StreamBasedCrawler.{State, StateAndReward}
+import com.typesafe.config.{Config, ConfigFactory}
 import ujson.Transformable
 
 import scala.annotation.tailrec
 import scala.concurrent.duration.DurationDouble
 import scala.concurrent.{Await, ExecutionContext, Future, Promise}
-import scala.util.{Success, Try}
+import scala.util.Try
 
 // Being lazy about defining execution contexts, this works fine for this purpose
 import scala.concurrent.ExecutionContext.Implicits.global
 
-case class RewardAndChildren(reward: Double, childUrls: Seq[String])
+/*
+ * After getting the actor based crawler working, this is my attempt at a cleaner, more functional approach using Akka
+ * Streams.
+ *
+ * I initialize a (Akka Stream) Source with the root URI (and empty state).
+ *
+ * We use 'unfoldAsync', which passes a state between calls, and allows us to asynchronously emit items as well as
+ * a future which represents the pending calls.
+ *
+ * At each unfoldAsync step, we:
+ *
+ *  - get the set of URIs to fetch, removing any duplicates and ones we've already visited (via the state)
+ *
+ *  - fetch each URI (using Akka HTTP), getting a Future to the eventual result
+ *
+ *  - combine any pending futures (via the state) and any newly created futures from above, and select on the first
+ *      ready one. We then return a future which is the first ready result, and the new state (the other remaining futures,
+ *      the lists of URIs to visit, and the fetched URI futures).
+ *
+ * By using this approach, since our state is immutable and we only process a single ready future at a time, we can simplify the state
+ *    management and not worry about concurrency/race issues there. We still benefit from a non-blocking and parallel
+ *    approach (since Akka HTTP performs fetching in parallel via its own actors and pooled HTTP connections).
+ *
+ * All of this provides us a Source that produces RewardAndChildren items in a stream. We simply perform a fold on this,
+ * tallying up the rewards into a sum.
+ *
+ * I've also composed this in such a way that we can independently test the component pieces, in particular the fetchNextBatch
+ * function (see StreamBasedCrawlerTest).
+ */
+class StreamBasedCrawler(implicit val actorSystem: ActorSystem) {
 
-object StreamCrawler {
-
-  // Visited, to visit, pending futures
-  type State = (Set[String], List[String], Seq[Future[RewardAndChildren]])
-  type StateAndReward = (State, Double)
-
-  def main(args: Array[String]): Unit = {
-
-    val uri = args.headOption.getOrElse("http://algo.work/interview/a")
-    println(new StreamCrawler().apply(uri))
-  }
-}
-
-class StreamCrawler {
-
-  import StreamCrawler._
+  private[this] implicit val materializer: ActorMaterializer = ActorMaterializer()
+  private[this] val log: LoggingAdapter = actorSystem.log
 
   private[this] val requestTimeout = 1.minute
   private[this] val sumTimeout = 2.minutes
-  private[this] val akkaClassLoader = classOf[akka.event.DefaultLoggingFilter].getClassLoader
-
-  // Akka seems to be having trouble with our classloader
-  private[this] val config = ConfigFactory
-    .defaultApplication(akkaClassLoader)
-    .resolve()
-
-  private[this] implicit val actorSystem: ActorSystem = ActorSystem.create("actorsystem", config, akkaClassLoader)
-  private[this] implicit val materializer: ActorMaterializer = ActorMaterializer()
-  private[this] val log = actorSystem.log
 
   def apply(rootUri: String): String = {
 
     val resultFuture = crawlAndSumWithUri(rootUri)
-      .andThen {
-        case _ => actorSystem.terminate()
-      }
 
     val sum = Await.result(resultFuture, requestTimeout)
     s"The sum of rewards is: $sum"
@@ -164,3 +168,31 @@ class StreamCrawler {
     else stripe(Promise(), fs.genericBuilder[Future[A]].result, fs.head, fs.tail)
   }
 }
+
+object StreamBasedCrawler {
+
+  // Visited, to visit, pending futures
+  type State = (Set[String], List[String], Seq[Future[RewardAndChildren]])
+  type StateAndReward = (State, Double)
+
+  def main(args: Array[String]): Unit = {
+
+    val akkaClassLoader: ClassLoader = classOf[akka.event.DefaultLoggingFilter].getClassLoader
+
+    // Akka seems to be having trouble with our classloader
+    val config: Config = ConfigFactory
+      .defaultApplication(akkaClassLoader)
+      .resolve()
+
+    implicit val actorSystem: ActorSystem = ActorSystem.create("actorsystem", config, akkaClassLoader)
+    val uri = args.headOption.getOrElse("http://algo.work/interview/a")
+    val resultFuture = new StreamBasedCrawler().crawlAndSumWithUri(uri)
+      .andThen {
+        // Shut down the actor system if running locally (leave it up otherwise)
+        case _ => actorSystem.terminate()
+      }
+
+  }
+}
+
+case class RewardAndChildren(reward: Double, childUrls: Seq[String])

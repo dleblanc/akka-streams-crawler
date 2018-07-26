@@ -1,7 +1,5 @@
 package algorithmia.Interview1
 
-import java.util.concurrent.ConcurrentHashMap
-
 import akka.actor.{Actor, ActorSystem, Props}
 import akka.event.Logging
 import akka.http.scaladsl.Http
@@ -11,32 +9,25 @@ import akka.stream.ActorMaterializer
 import akka.util.Timeout
 import ujson.{Js, Transformable}
 
-import scala.collection.JavaConverters._
 import scala.concurrent.duration.DurationDouble
 import scala.concurrent.{Await, ExecutionContextExecutor, Future}
 
-case class ResourceRequest(uri: String)
-
-case class UriResult(uri: String, reward: Double, children: List[UriResult]) {
-
-  def format(indent: Int = 0): String = {
-
-    val indentStr = Array.fill(indent)("  ").mkString("")
-
-    val childrenStr = children
-      .map { _.format(indent + 1) }
-      .mkString(",")
-
-    s"""${indentStr}uri: $uri, reward: $reward, children: [
-       |$childrenStr
-       |$indentStr]""".stripMargin
-  }
-
-  def flatten(): List[UriResult] = this :: children.flatMap { node => node.flatten() }
-
-}
-
-class CrawlerActor(uriToNodeFuture: scala.collection.concurrent.Map[String, Unit]) extends Actor {
+/*
+  * This is my first stab at a crawler for the Algorithmia interview. Note that the StreamCrawler is much nicer - please
+  * look at that instead, this is only kept for posterity.
+  *
+  * Design:
+  *  - We create a single instance of the crawler actor, initialized with an empty map of Uri->Result future.
+  *  - We then send that actor a ResourceRequest to fetch the root URI. The actor requests that data using Akka-HTTP and
+  *     performs requests of the nested resources, composing these into a single future that encapsulates the entire
+  *     response. (Akka HTTP requests are handled by sending a message back to the 'self' actor).
+  *
+  *  - The caller then flattens (un-nests) the nested result structure and sums up the rewards.
+  *
+  * uriToNodeFuture is a collection of the URI to the future that holds the result of the fetch. Used so we know
+  *                        which URIs we've visited so we don't fetch duplicate resources.
+  */
+class ActorBasedCrawler(uriToNodeFuture: collection.mutable.Map[String, Unit]) extends Actor {
   private[this] val REQUEST_TIMEOUT = 10.seconds
   private[this] val LONG_TIMEOUT = Timeout(5.minutes)
 
@@ -126,7 +117,28 @@ class CrawlerActor(uriToNodeFuture: scala.collection.concurrent.Map[String, Unit
 
 }
 
-object Crawler {
+case class ResourceRequest(uri: String)
+
+case class UriResult(uri: String, reward: Double, children: List[UriResult]) {
+
+  def format(indent: Int = 0): String = {
+
+    val indentStr = Array.fill(indent)("  ").mkString("")
+
+    val childrenStr = children
+      .map { _.format(indent + 1) }
+      .mkString(",")
+
+    s"""${indentStr}uri: $uri, reward: $reward, children: [
+       |$childrenStr
+       |$indentStr]""".stripMargin
+  }
+
+  def flatten(): List[UriResult] = this :: children.flatMap { node => node.flatten() }
+
+}
+
+object ActorBasedCrawler {
 
   // Can run this locally, if desired
   def main(args: Array[String]): Unit = {
@@ -134,8 +146,8 @@ object Crawler {
     val actorSystem = ActorSystem()
     val rootUri = args.headOption.getOrElse("http://algo.work/interview/a")
 
-    val sharedFetchUrlMap = new ConcurrentHashMap[String, Unit]().asScala
-    val crawlerActor = actorSystem.actorOf(Props(new CrawlerActor(sharedFetchUrlMap)))
+    val sharedFetchUrlMap = collection.mutable.Map[String, Unit]()
+    val crawlerActor = actorSystem.actorOf(Props(new ActorBasedCrawler(sharedFetchUrlMap)))
 
     implicit val timeout: Timeout = Timeout(3.minutes)
     val future = (crawlerActor ? ResourceRequest(rootUri)).mapTo[Option[UriResult]]
