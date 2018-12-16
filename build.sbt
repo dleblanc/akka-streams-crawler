@@ -34,13 +34,8 @@ libraryDependencies ++= Seq(
   "org.scalatest" %% "scalatest" % "3.0.5" % Test
 )
 
-//libraryDependencies += "org.scalatest" % "scalatest_2.11" % "3.0.1" % "test"
-
 retrieveManaged := true
 
 // Don't convert name to lowercase
 normalizedName := name.value
 
-//assemblyMergeStrategy in assembly := {
-//      case PathList("reference.conf") => MergeStrategy.concat
-//}
