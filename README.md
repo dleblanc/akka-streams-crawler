@@ -2,10 +2,28 @@
 
 This is a small project that shows how to use Akka, Akka-HTTP, and Akka-Streams in Scala to recursively consume a 
 nested JSON structure, convert it into an internal model, and asynchronously (and recursively) populate those in
-a simple linear (Akka) stream. 
+a simple linear (Akka) stream.
 
-I've also included an analogous approach (in dml.interview1.ActorBasedCrawler) - which is fine, but not nearly as
-composable as the streams based approach. 
+Problem statement: Recursively summarize the 'rewards' from a number of JSON resources, retrieved via HTTP from
+a single root resource. Each resource may specify 0 or more children that should be recursively retrieved.
+All requests should be performed as eagerly as possible (no unnecessary blocking). This tree of resources
+is fully consumed when all resources yield no more children. 
+
+Each of the JSON files looks as follows (for an example resource at http://web.site/path/b):
+
+```json
+{
+  "children":[
+    "http://web.site/path/b",
+    "http://web.site/path/c"
+  ],
+  "reward":1
+} 
+```
+
+I've provided two solutions: an Actor-based approach (dml.interview1.ActorBasedCrawler) and an approach based
+on Akka Streams (dml.interview1.StreamBasedCrawler). The latter is the preferred solution, and the only one I've
+included unit tests for (the actor approach is only left for posterity, it was the initial approach). 
 
 You can run it locally via running the "dml.interview1.StreamBasedCrawler" main class (or use SBT below).
 
