@@ -1,4 +1,4 @@
-package algorithmia.Interview1
+package dml.interview1
 
 import akka.actor.ActorSystem
 import akka.event.LoggingAdapter
@@ -6,17 +6,17 @@ import akka.http.scaladsl.Http
 import akka.http.scaladsl.model.HttpRequest
 import akka.stream.ActorMaterializer
 import akka.stream.scaladsl.{Sink, Source}
-import algorithmia.Interview1.StreamBasedCrawler.{State, StateAndReward}
-import com.typesafe.config.{Config, ConfigFactory}
+import dml.interview1.StreamBasedCrawler.{State, StateAndReward}
 import ujson.Transformable
 
 import scala.annotation.tailrec
 import scala.concurrent.duration.DurationDouble
-import scala.concurrent.{Await, ExecutionContext, Future, Promise}
+import scala.concurrent.{Await, Future, Promise}
 import scala.util.Try
 
 // Being lazy about defining execution contexts, this works fine for this purpose
 import scala.concurrent.ExecutionContext.Implicits.global
+
 
 /*
  * After getting the actor based crawler working, this is my attempt at a cleaner, more functional approach using Akka
@@ -54,14 +54,6 @@ class StreamBasedCrawler(implicit val actorSystem: ActorSystem) {
 
   private[this] val requestTimeout = 1.minute
   private[this] val sumTimeout = 2.minutes
-
-  def apply(rootUri: String): String = {
-
-    val resultFuture = crawlAndSumWithUri(rootUri)
-
-    val sum = Await.result(resultFuture, requestTimeout)
-    s"The sum of rewards is: $sum"
-  }
 
   def crawlAndSumWithUri(rootUri: String): Future[Double] = {
 
@@ -171,29 +163,31 @@ class StreamBasedCrawler(implicit val actorSystem: ActorSystem) {
 
 object StreamBasedCrawler {
 
-  // Visited, to visit, pending futures
+  // State is composed of (Visited URIs, URIs to visit, all pending/outstanding futures)
   type State = (Set[String], List[String], Seq[Future[RewardAndChildren]])
   type StateAndReward = (State, Double)
 
-  // Provide a way to run it locally, outside of Algorithmia
+  // This is the main entry point to run the crawler
   def main(args: Array[String]): Unit = {
 
-    val akkaClassLoader: ClassLoader = classOf[akka.event.DefaultLoggingFilter].getClassLoader
-
-    // Akka seems to be having trouble with our classloader
-    val config: Config = ConfigFactory
-      .defaultApplication(akkaClassLoader)
-      .resolve()
-
-    implicit val actorSystem: ActorSystem = ActorSystem.create("actorsystem", config, akkaClassLoader)
+    implicit val actorSystem: ActorSystem = ActorSystem()
     val uri = args.headOption.getOrElse("http://algo.work/interview/a")
     val resultFuture = new StreamBasedCrawler().crawlAndSumWithUri(uri)
       .andThen {
-        // Shut down the actor system if running locally
-        case _ => actorSystem.terminate()
+
+        // Shut down the HTTP client pools, and actor system when done
+        case _ =>
+          Http()
+            .shutdownAllConnectionPools()
+              .andThen {
+                case _ => actorSystem.terminate()
+              }
       }
 
+    val sumOfRewards = Await.result(resultFuture, 5.minutes)
+    printf("The recursive sum of all rewards is: %.2f\n", sumOfRewards)
   }
 }
+
 
 case class RewardAndChildren(reward: Double, childUrls: Seq[String])

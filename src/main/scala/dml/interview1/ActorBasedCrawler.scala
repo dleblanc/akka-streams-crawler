@@ -1,4 +1,4 @@
-package algorithmia.Interview1
+package dml.interview1
 
 import akka.actor.{Actor, ActorSystem, Props}
 import akka.event.Logging
@@ -13,8 +13,8 @@ import scala.concurrent.duration.DurationDouble
 import scala.concurrent.{Await, ExecutionContextExecutor, Future}
 
 /*
-  * This is my first stab at a crawler for the Algorithmia interview. Note that the StreamCrawler is much nicer - please
-  * look at that instead, this is only kept for posterity.
+  * This is an actor based approach for recursively crawling the nested JSON structure in a non-blocking, eager manner.
+  * Note that the Streams approach is probably preferable, as it is much more composable, and supports backpressure.
   *
   * Design:
   *  - We create a single instance of the crawler actor, initialized with an empty map of Uri->Result future.
@@ -35,7 +35,7 @@ class ActorBasedCrawler(uriToNodeFuture: collection.mutable.Map[String, Unit]) e
   import context.dispatcher
   implicit val materializer: ActorMaterializer = ActorMaterializer()
 
-  override def receive = {
+  override def receive: PartialFunction[Any, Unit] = {
 
     case ResourceRequest(uri) =>
 
@@ -168,9 +168,9 @@ object ActorBasedCrawler {
         .sum
     }
 
-    val sum = Await.result(sumFuture, timeout.duration)
+    val sumOfRewards = Await.result(sumFuture, timeout.duration)
 
-    s"The sum of rewards is: $sum"
+    printf("The recursive sum of all rewards is: %.2f\n", sumOfRewards)
   }
 
 }

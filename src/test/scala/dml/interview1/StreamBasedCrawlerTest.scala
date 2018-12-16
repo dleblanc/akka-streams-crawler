@@ -1,8 +1,8 @@
-package algorithmia.Interview1
+package dml.interview1
 
 import akka.actor.ActorSystem
 import akka.testkit.TestKit
-import algorithmia.Interview1.StreamBasedCrawler.{State, StateAndReward}
+import dml.interview1.StreamBasedCrawler.{State, StateAndReward}
 import org.scalatest._
 
 import scala.concurrent.duration.DurationInt

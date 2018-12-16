@@ -19,6 +19,6 @@ def makeFileAtLevel(level, name):
 
 
 if __name__ == "__main__":
-    makeFileAtLevel(13, "a")
+    makeFileAtLevel(8, "a")
 
 
