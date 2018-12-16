@@ -1,7 +1,7 @@
 #### This is the code for the [Redacted] interview challenge: (http://algo.work/interview)
 
 This approach uses Akka Actors and Akka-HTTP to crawl a nested JSON structure. You can run it locally
-via running the "StreamBasedCrawler" main class, or host it on Algorithmia via the Interview1 class.
+via running the "StreamBasedCrawler" main class.
 
 It scales well to many thousands of resources (see below for testing), and uses a nested Futures oriented
 approach, so fetches resources in an eager yet non-blocking fashion.

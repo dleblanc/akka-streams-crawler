@@ -153,7 +153,7 @@ class StreamBasedCrawler(implicit val actorSystem: ActorSystem) {
     *
     * @param fs a scala.collection.Seq
     */
-  def selectFuture[A](fs: Seq[Future[A]])(implicit ec: ExecutionContext): Future[(Try[A], Seq[Future[A]])] = {
+  def selectFuture[A](fs: Seq[Future[A]]): Future[(Try[A], Seq[Future[A]])] = {
     @tailrec
     def stripe(p: Promise[(Try[A], Seq[Future[A]])],
                heads: Seq[Future[A]],
